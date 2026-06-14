@@ -1,0 +1,131 @@
+@import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --candy-shadow: 0 6px 0 rgba(0,0,0,0.1), 0 8px 20px rgba(0,0,0,0.08);
+  font-family: "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  color: #5D4E37;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  background: #FFF8E7;
+  background-image:
+    radial-gradient(circle at 10% 0%, rgba(255, 207, 159, 0.35) 0, transparent 50%),
+    radial-gradient(circle at 100% 20%, rgba(159, 226, 219, 0.4) 0, transparent 55%),
+    radial-gradient(circle at 50% 100%, rgba(228, 193, 240, 0.3) 0, transparent 55%);
+  background-attachment: fixed;
+}
+
+@layer components {
+  .btn-candy {
+    @apply relative px-6 py-3 rounded-candy font-display text-lg
+      shadow-candy transition-all duration-150 active:translate-y-1 active:shadow-none
+      select-none cursor-pointer;
+  }
+
+  .btn-candy-sm {
+    @apply relative px-4 py-2 rounded-candy-sm font-display
+      shadow-candy-sm transition-all duration-150 active:translate-y-0.5 active:shadow-none
+      select-none cursor-pointer;
+  }
+
+  .card-candy {
+    @apply rounded-candy-lg bg-white shadow-card border-4 border-cream-200
+      transition-all duration-300;
+  }
+
+  .card-candy-hover:hover {
+    @apply -translate-y-1 shadow-candy-lg;
+  }
+
+  .workspace-layout {
+    @apply w-full h-full flex flex-col overflow-hidden;
+  }
+
+  .rainbow-text {
+    @apply bg-rainbow bg-[length:200%_auto] animate-rainbow bg-clip-text text-transparent;
+    -webkit-background-clip: text;
+  }
+
+  .rainbow-border {
+    position: relative;
+    border-radius: 24px;
+  }
+  .rainbow-border::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 28px;
+    padding: 4px;
+    background: linear-gradient(135deg, #FF6B6B, #FFA775, #FFE66D, #7ED47E, #4ECDC4, #A882D8);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .scrollbar-candy::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .scrollbar-candy::-webkit-scrollbar-track {
+    background: rgba(255, 248, 231, 0.6);
+    border-radius: 10px;
+  }
+  .scrollbar-candy::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #FFB0A8, #FFD699);
+    border-radius: 10px;
+  }
+  .scrollbar-candy::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #FF8A80, #FFC277);
+  }
+
+  .canvas-bg {
+    background-color: #fffdf5;
+    background-image:
+      linear-gradient(rgba(255, 220, 180, 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 220, 180, 0.15) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 px-3 py-1 rounded-full
+      bg-cream-200/80 text-cocoa-600 text-sm font-medium
+      border border-cream-300;
+  }
+
+  .divider-dot {
+    background-image: radial-gradient(circle, #d7c8a8 1.5px, transparent 1.5px);
+    background-size: 12px 12px;
+  }
+}
+
+@layer utilities {
+  .touch-none {
+    touch-action: none;
+  }
+  .backdrop-blur-soft {
+    backdrop-filter: blur(8px) saturate(140%);
+  }
+}
