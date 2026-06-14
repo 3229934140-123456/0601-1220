@@ -2,17 +2,21 @@ import { create } from "zustand";
 import {
   Character,
   ColorTheme,
+  Costume,
   DrawStroke,
   DrawingTool,
   DrawingToolType,
+  Expression,
   FamilyMember,
   ID,
   Layer,
   Page,
+  Pose,
   Project,
   StickerAsset,
   StickerInstance,
   TextBubble,
+  TextureAsset,
   WorkspaceKey,
 } from "@/types";
 import {
@@ -22,8 +26,14 @@ import {
   FAMILY_MEMBERS,
   MOCK_CHARACTERS,
   STICKER_ASSETS,
+  TEXTURE_ASSETS,
 } from "@/utils/mockData";
 import { uid } from "@/utils/id";
+
+interface HistoryCommand {
+  type: "addStroke" | "removeStroke" | "clearStrokes";
+  data: unknown;
+}
 
 interface ProjectState {
   projects: Project[];
@@ -33,8 +43,11 @@ interface ProjectState {
   characters: Character[];
   family: FamilyMember[];
   stickerAssets: StickerAsset[];
+  textureAssets: TextureAsset[];
   themes: ColorTheme[];
   activeThemeId: ID | null;
+  undoStacks: Record<ID, HistoryCommand[]>;
+  redoStacks: Record<ID, HistoryCommand[]>;
   setCurrentProject: (id: ID | null) => void;
   setCurrentPage: (id: ID | null) => void;
   createProject: (title?: string) => Project;
@@ -43,7 +56,26 @@ interface ProjectState {
   reorderPages: (startIndex: number, endIndex: number) => void;
   updatePageBackground: (pageId: ID, value: string) => void;
   updatePageDescription: (pageId: ID, desc: string) => void;
+  setPageTexture: (pageId: ID, texture: TextureAsset | null) => void;
   addStroke: (pageId: ID, stroke: DrawStroke) => void;
+  removeStrokes: (pageId: ID, strokeIds: ID[]) => void;
+  clearPageStrokes: (pageId: ID) => void;
+  undo: (pageId: ID) => boolean;
+  redo: (pageId: ID) => boolean;
+  canUndo: (pageId: ID) => boolean;
+  canRedo: (pageId: ID) => boolean;
+  addCharacter: (character: Omit<Character, "id" | "projectId" | "expressions" | "costumes" | "poses">) => Character;
+  updateCharacter: (characterId: ID, patch: Partial<Character>) => void;
+  removeCharacter: (characterId: ID) => void;
+  addExpression: (characterId: ID, expression: Omit<Expression, "id">) => void;
+  updateExpression: (characterId: ID, expressionId: ID, patch: Partial<Expression>) => void;
+  removeExpression: (characterId: ID, expressionId: ID) => void;
+  addCostume: (characterId: ID, costume: Omit<Costume, "id">) => void;
+  updateCostume: (characterId: ID, costumeId: ID, patch: Partial<Costume>) => void;
+  removeCostume: (characterId: ID, costumeId: ID) => void;
+  addPose: (characterId: ID, pose: Omit<Pose, "id">) => void;
+  updatePose: (characterId: ID, poseId: ID, patch: Partial<Pose>) => void;
+  removePose: (characterId: ID, poseId: ID) => void;
   addTextBubble: (pageId: ID, bubble: Omit<TextBubble, "id" | "pageId">) => void;
   updateTextBubble: (pageId: ID, bubbleId: ID, patch: Partial<TextBubble>) => void;
   removeTextBubble: (pageId: ID, bubbleId: ID) => void;
@@ -62,6 +94,33 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   const sampleProjects = createSampleProjects();
   const initialPages = createMockPages("p1");
   const initialCharacters = MOCK_CHARACTERS;
+  const initUndoStacks: Record<ID, HistoryCommand[]> = {};
+  const initRedoStacks: Record<ID, HistoryCommand[]> = {};
+  initialPages.forEach((p) => {
+    initUndoStacks[p.id] = [];
+    initRedoStacks[p.id] = [];
+  });
+
+  const _ensurePageHistory = (pageId: ID) => {
+    const s = get();
+    if (!s.undoStacks[pageId]) {
+      set((state) => ({
+        undoStacks: { ...state.undoStacks, [pageId]: [] },
+        redoStacks: { ...state.redoStacks, [pageId]: [] },
+      }));
+    }
+  };
+
+  const _pushHistory = (pageId: ID, cmd: HistoryCommand) => {
+    _ensurePageHistory(pageId);
+    set((state) => ({
+      undoStacks: {
+        ...state.undoStacks,
+        [pageId]: [...(state.undoStacks[pageId] ?? []), cmd],
+      },
+      redoStacks: { ...state.redoStacks, [pageId]: [] },
+    }));
+  };
 
   return {
     projects: sampleProjects,
@@ -71,8 +130,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     characters: initialCharacters,
     family: FAMILY_MEMBERS,
     stickerAssets: STICKER_ASSETS,
+    textureAssets: TEXTURE_ASSETS,
     themes: COLOR_THEMES,
     activeThemeId: COLOR_THEMES[0].id,
+    undoStacks: initUndoStacks,
+    redoStacks: initRedoStacks,
 
     get currentProject() {
       const { projects, currentProjectId } = get();
@@ -106,6 +168,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         projectId: newProject.id,
         pageNumber: 1,
         background: { type: "color", value: "#FFFAF0", name: "米白" },
+        texture: null,
         sceneDescription: "",
         strokes: [],
         textBubbles: [],
@@ -133,6 +196,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         projectId: state.currentProjectId ?? "",
         pageNumber: newNumber,
         background: { type: "color", value: "#FFFAF0", name: "米白" },
+        texture: null,
         sceneDescription: "",
         strokes: [],
         textBubbles: [],
@@ -181,10 +245,261 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }));
     },
 
+    setPageTexture: (pageId, texture) => {
+      set((state) => ({
+        pages: state.pages.map((p) => (p.id === pageId ? { ...p, texture } : p)),
+      }));
+    },
+
     addStroke: (pageId, stroke) => {
       set((state) => ({
         pages: state.pages.map((p) =>
           p.id === pageId ? { ...p, strokes: [...p.strokes, stroke] } : p,
+        ),
+      }));
+      _pushHistory(pageId, { type: "addStroke", data: { strokeId: stroke.id } });
+    },
+
+    removeStrokes: (pageId, strokeIds) => {
+      const page = get().pages.find((p) => p.id === pageId);
+      const removedStrokes = page?.strokes.filter((s) => strokeIds.includes(s.id)) ?? [];
+      set((state) => ({
+        pages: state.pages.map((p) =>
+          p.id === pageId
+            ? { ...p, strokes: p.strokes.filter((s) => !strokeIds.includes(s.id)) }
+            : p,
+        ),
+      }));
+      _pushHistory(pageId, { type: "removeStroke", data: { strokes: removedStrokes } });
+    },
+
+    clearPageStrokes: (pageId) => {
+      const page = get().pages.find((p) => p.id === pageId);
+      const allStrokes = page?.strokes ?? [];
+      set((state) => ({
+        pages: state.pages.map((p) => (p.id === pageId ? { ...p, strokes: [] } : p)),
+      }));
+      _pushHistory(pageId, { type: "clearStrokes", data: { strokes: allStrokes } });
+    },
+
+    undo: (pageId) => {
+      _ensurePageHistory(pageId);
+      const state = get();
+      const stack = state.undoStacks[pageId] ?? [];
+      if (stack.length === 0) return false;
+      const cmd = stack[stack.length - 1];
+      const newUndo = stack.slice(0, -1);
+      let success = false;
+
+      if (cmd.type === "addStroke") {
+        const { strokeId } = cmd.data as { strokeId: ID };
+        set((s) => ({
+          pages: s.pages.map((p) =>
+            p.id === pageId ? { ...p, strokes: p.strokes.filter((st) => st.id !== strokeId) } : p,
+          ),
+        }));
+        success = true;
+      } else if (cmd.type === "removeStroke") {
+        const { strokes } = cmd.data as { strokes: DrawStroke[] };
+        set((s) => ({
+          pages: s.pages.map((p) =>
+            p.id === pageId ? { ...p, strokes: [...p.strokes, ...strokes] } : p,
+          ),
+        }));
+        success = true;
+      } else if (cmd.type === "clearStrokes") {
+        const { strokes } = cmd.data as { strokes: DrawStroke[] };
+        set((s) => ({
+          pages: s.pages.map((p) => (p.id === pageId ? { ...p, strokes } : p)),
+        }));
+        success = true;
+      }
+
+      if (success) {
+        set((s) => ({
+          undoStacks: { ...s.undoStacks, [pageId]: newUndo },
+          redoStacks: { ...s.redoStacks, [pageId]: [...(s.redoStacks[pageId] ?? []), cmd] },
+        }));
+      }
+      return success;
+    },
+
+    redo: (pageId) => {
+      _ensurePageHistory(pageId);
+      const state = get();
+      const stack = state.redoStacks[pageId] ?? [];
+      if (stack.length === 0) return false;
+      const cmd = stack[stack.length - 1];
+      const newRedo = stack.slice(0, -1);
+      let success = false;
+
+      if (cmd.type === "addStroke") {
+        const { strokeId } = cmd.data as { strokeId: ID };
+        const page = state.pages.find((p) => p.id === pageId);
+        const stroke = page?.strokes.find((s) => s.id === strokeId);
+        if (stroke) {
+          set((s) => ({
+            pages: s.pages.map((p) =>
+              p.id === pageId ? { ...p, strokes: [...p.strokes, stroke] } : p,
+            ),
+          }));
+          success = true;
+        }
+      } else if (cmd.type === "removeStroke") {
+        const { strokes } = cmd.data as { strokes: DrawStroke[] };
+        const ids = strokes.map((s) => s.id);
+        set((s) => ({
+          pages: s.pages.map((p) =>
+            p.id === pageId ? { ...p, strokes: p.strokes.filter((st) => !ids.includes(st.id)) } : p,
+          ),
+        }));
+        success = true;
+      } else if (cmd.type === "clearStrokes") {
+        set((s) => ({
+          pages: s.pages.map((p) => (p.id === pageId ? { ...p, strokes: [] } : p)),
+        }));
+        success = true;
+      }
+
+      if (success) {
+        set((s) => ({
+          redoStacks: { ...s.redoStacks, [pageId]: newRedo },
+          undoStacks: { ...s.undoStacks, [pageId]: [...(s.undoStacks[pageId] ?? []), cmd] },
+        }));
+      }
+      return success;
+    },
+
+    canUndo: (pageId) => (get().undoStacks[pageId]?.length ?? 0) > 0,
+    canRedo: (pageId) => (get().redoStacks[pageId]?.length ?? 0) > 0,
+
+    addCharacter: (character) => {
+      const state = get();
+      const newChar: Character = {
+        ...character,
+        id: uid(),
+        projectId: state.currentProjectId ?? "",
+        expressions: [],
+        costumes: [],
+        poses: [],
+      };
+      set((s) => ({ characters: [...s.characters, newChar] }));
+      return newChar;
+    },
+
+    updateCharacter: (characterId, patch) => {
+      set((state) => ({
+        characters: state.characters.map((c) =>
+          c.id === characterId ? { ...c, ...patch } : c,
+        ),
+      }));
+    },
+
+    removeCharacter: (characterId) => {
+      set((state) => ({
+        characters: state.characters.filter((c) => c.id !== characterId),
+      }));
+    },
+
+    addExpression: (characterId, expression) => {
+      set((state) => ({
+        characters: state.characters.map((c) =>
+          c.id === characterId
+            ? { ...c, expressions: [...c.expressions, { ...expression, id: uid() }] }
+            : c,
+        ),
+      }));
+    },
+
+    updateExpression: (characterId, expressionId, patch) => {
+      set((state) => ({
+        characters: state.characters.map((c) =>
+          c.id === characterId
+            ? {
+                ...c,
+                expressions: c.expressions.map((e) =>
+                  e.id === expressionId ? { ...e, ...patch } : e,
+                ),
+              }
+            : c,
+        ),
+      }));
+    },
+
+    removeExpression: (characterId, expressionId) => {
+      set((state) => ({
+        characters: state.characters.map((c) =>
+          c.id === characterId
+            ? { ...c, expressions: c.expressions.filter((e) => e.id !== expressionId) }
+            : c,
+        ),
+      }));
+    },
+
+    addCostume: (characterId, costume) => {
+      set((state) => ({
+        characters: state.characters.map((c) =>
+          c.id === characterId
+            ? { ...c, costumes: [...c.costumes, { ...costume, id: uid() }] }
+            : c,
+        ),
+      }));
+    },
+
+    updateCostume: (characterId, costumeId, patch) => {
+      set((state) => ({
+        characters: state.characters.map((c) =>
+          c.id === characterId
+            ? {
+                ...c,
+                costumes: c.costumes.map((co) =>
+                  co.id === costumeId ? { ...co, ...patch } : co,
+                ),
+              }
+            : c,
+        ),
+      }));
+    },
+
+    removeCostume: (characterId, costumeId) => {
+      set((state) => ({
+        characters: state.characters.map((c) =>
+          c.id === characterId
+            ? { ...c, costumes: c.costumes.filter((co) => co.id !== costumeId) }
+            : c,
+        ),
+      }));
+    },
+
+    addPose: (characterId, pose) => {
+      set((state) => ({
+        characters: state.characters.map((c) =>
+          c.id === characterId
+            ? { ...c, poses: [...c.poses, { ...pose, id: uid() }] }
+            : c,
+        ),
+      }));
+    },
+
+    updatePose: (characterId, poseId, patch) => {
+      set((state) => ({
+        characters: state.characters.map((c) =>
+          c.id === characterId
+            ? {
+                ...c,
+                poses: c.poses.map((p) => (p.id === poseId ? { ...p, ...patch } : p)),
+              }
+            : c,
+        ),
+      }));
+    },
+
+    removePose: (characterId, poseId) => {
+      set((state) => ({
+        characters: state.characters.map((c) =>
+          c.id === characterId
+            ? { ...c, poses: c.poses.filter((p) => p.id !== poseId) }
+            : c,
         ),
       }));
     },
@@ -283,8 +598,7 @@ interface DrawingState {
   tool: DrawingTool;
   layers: Layer[];
   activeLayerId: ID | null;
-  undoStack: DrawStroke[][];
-  redoStack: DrawStroke[][];
+  showTexturesPanel: boolean;
   setToolType: (type: DrawingToolType) => void;
   setToolColor: (color: string) => void;
   setToolSize: (size: number) => void;
@@ -296,8 +610,7 @@ interface DrawingState {
   moveLayerDown: (id: ID) => void;
   addLayer: (name?: string) => void;
   removeLayer: (id: ID) => void;
-  undo: () => void;
-  redo: () => void;
+  toggleTexturesPanel: () => void;
 }
 
 const INITIAL_TOOL: DrawingTool = {
@@ -347,8 +660,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
   tool: INITIAL_TOOL,
   layers: createInitialLayers(),
   activeLayerId: "layer2",
-  undoStack: [],
-  redoStack: [],
+  showTexturesPanel: false,
 
   setToolType: (type) => {
     const names: Record<DrawingToolType, string> = {
@@ -376,7 +688,8 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
     }));
   },
   moveLayerUp: (id) => {
-    const layers = [...get().layers];
+    const state = get();
+    const layers = [...state.layers];
     const idx = layers.findIndex((l) => l.id === id);
     if (idx < layers.length - 1) {
       [layers[idx], layers[idx + 1]] = [layers[idx + 1], layers[idx]];
@@ -385,7 +698,8 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
     }
   },
   moveLayerDown: (id) => {
-    const layers = [...get().layers];
+    const state = get();
+    const layers = [...state.layers];
     const idx = layers.findIndex((l) => l.id === id);
     if (idx > 0) {
       [layers[idx], layers[idx - 1]] = [layers[idx - 1], layers[idx]];
@@ -394,7 +708,8 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
     }
   },
   addLayer: (name = "新图层") => {
-    const layers = [...get().layers];
+    const state = get();
+    const layers = [...state.layers];
     const newLayer: Layer = {
       id: uid(),
       pageId: "",
@@ -420,23 +735,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
     });
   },
 
-  undo: () => {
-    // 简化：清空撤销栈以模拟
-    set((state) => {
-      if (state.undoStack.length === 0) return state;
-      const newUndo = [...state.undoStack];
-      const strokes = newUndo.pop() ?? [];
-      return { undoStack: newUndo, redoStack: [...state.redoStack, strokes] };
-    });
-  },
-  redo: () => {
-    set((state) => {
-      if (state.redoStack.length === 0) return state;
-      const newRedo = [...state.redoStack];
-      const strokes = newRedo.pop() ?? [];
-      return { redoStack: newRedo, undoStack: [...state.undoStack, strokes] };
-    });
-  },
+  toggleTexturesPanel: () => set((s) => ({ showTexturesPanel: !s.showTexturesPanel })),
 }));
 
 interface UIState {

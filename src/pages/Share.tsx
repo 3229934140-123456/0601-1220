@@ -26,6 +26,7 @@ import Tabs from "@/components/common/Tabs";
 import Slider from "@/components/common/Slider";
 import { useProjectStore } from "@/store";
 import { FAMILY_MEMBERS } from "@/utils/mockData";
+import { exportPDF, exportImages, exportVideo } from "@/utils/export";
 import { cn, uid, formatDate } from "@/utils/id";
 import type { WorkspaceKey, FamilyMember } from "@/types";
 
@@ -76,33 +77,70 @@ export default function Share() {
     },
   ]);
   const [newComment, setNewComment] = useState("");
+  const [pdfSize, setPdfSize] = useState<"A4" | "A5" | "SQR">("A4");
   const [pdfQuality, setPdfQuality] = useState(90);
   const [imageSize, setImageSize] = useState("large");
+  const [imageFormat, setImageFormat] = useState<"png" | "jpeg">("png");
   const [videoMusic, setVideoMusic] = useState(true);
   const [videoSpeed, setVideoSpeed] = useState(5);
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const [exported, setExported] = useState(false);
+  const [exportResult, setExportResult] = useState<string | null>(null);
 
   const totalPages = orderedPages.length;
 
-  const runExport = () => {
+  const runExport = async () => {
+    if (exported && exportResult) {
+      setExported(false);
+      setExportResult(null);
+      return;
+    }
+
     setExported(false);
     setExportProgress(0);
     let p = 0;
     const timer = setInterval(() => {
-      p += Math.random() * 18 + 6;
-      if (p >= 100) {
-        p = 100;
+      p += Math.random() * 12 + 5;
+      if (p >= 95) {
+        p = 95;
         clearInterval(timer);
+        setExportProgress(95);
+      } else {
+        setExportProgress(p);
+      }
+    }, 200);
+
+    setTimeout(async () => {
+      clearInterval(timer);
+      if (!currentProject) return;
+
+      let result = "";
+      try {
+        if (exportTab === "pdf") {
+          const res = await exportPDF(currentProject, orderedPages, { size: pdfSize });
+          result = `已导出 ${res.pages} 页 PDF`;
+        } else if (exportTab === "images") {
+          const res = await exportImages(currentProject, orderedPages, {
+            format: imageFormat,
+            quality: pdfQuality / 100,
+          });
+          result = `已导出 ${res.count} 张 ${imageFormat.toUpperCase()} 图片`;
+        } else {
+          const res = await exportVideo(currentProject, orderedPages, { music: videoMusic });
+          result = `已生成 ${res.frameCount} 帧视频画面 + 字幕文件`;
+        }
         setExportProgress(100);
         setTimeout(() => {
           setExported(true);
           setExportProgress(null);
-        }, 600);
-      } else {
-        setExportProgress(p);
+          setExportResult(result);
+        }, 500);
+      } catch (err) {
+        console.error("导出失败:", err);
+        setExportProgress(null);
+        alert("导出过程中出现问题，请重试");
       }
-    }, 300);
+    }, 2500);
   };
 
   const toggleMemberPerm = (id: string, key: "canComment" | "canEdit") => {
@@ -196,12 +234,13 @@ export default function Share() {
                             { k: "A4", v: "标准" },
                             { k: "A5", v: "便携" },
                             { k: "SQR", v: "方形" },
-                          ].map((o, i) => (
+                          ].map((o) => (
                             <button
                               key={o.k}
+                              onClick={() => setPdfSize(o.k as "A4" | "A5" | "SQR")}
                               className={cn(
                                 "p-3 rounded-candy-sm border-2 transition-all",
-                                i === 0
+                                pdfSize === o.k
                                   ? `border-coral-400 bg-coral-50 shadow-sm`
                                   : "border-cream-200 bg-white hover:border-cream-300",
                               )}
@@ -269,29 +308,33 @@ export default function Share() {
                         </div>
                       </div>
                       <Slider
-                        label="JPG 压缩质量"
-                        value={85}
+                        label="压缩质量"
+                        value={pdfQuality}
                         showValue
                         unit="%"
-                        onChange={() => {}}
+                        onChange={setPdfQuality}
                         accentColor={cfg.accent}
                       />
                       <div>
                         <label className="text-sm font-medium text-cocoa-500 block mb-2">
                           图片格式
                         </label>
-                        <div className="grid grid-cols-4 gap-2">
-                          {["JPG", "PNG", "WEBP", "AVIF"].map((f, i) => (
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { k: "png", v: "PNG 无损" },
+                            { k: "jpeg", v: "JPEG 压缩" },
+                          ].map((f) => (
                             <button
-                              key={f}
+                              key={f.k}
+                              onClick={() => setImageFormat(f.k as "png" | "jpeg")}
                               className={cn(
-                                "p-2.5 rounded-candy-sm border-2 font-display text-sm transition-all",
-                                i === 0
+                                "p-3 rounded-candy-sm border-2 font-display text-sm transition-all",
+                                imageFormat === f.k
                                   ? "border-sky-400 bg-sky-50 text-sky-600"
                                   : "border-cream-200 bg-white text-cocoa-500 hover:border-cream-300",
                               )}
                             >
-                              {f}
+                              {f.v}
                             </button>
                           ))}
                         </div>
@@ -452,7 +495,7 @@ export default function Share() {
                       </div>
                       <div className="flex-1">
                         <div className="font-display text-xl text-mint-600">生成成功！🎉</div>
-                        <div className="text-sm text-cocoa-500">文件已准备好，点击下方按钮下载</div>
+                        <div className="text-sm text-cocoa-500">{exportResult ?? "文件已准备好，点击下方按钮下载"}</div>
                       </div>
                     </div>
                   ) : null}

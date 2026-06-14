@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
   Pencil,
   Droplet,
@@ -20,6 +20,7 @@ import {
   Trash2,
   ZoomIn,
   ZoomOut,
+  FileText,
 } from "lucide-react";
 import WorkspaceLayout from "@/components/layout/WorkspaceLayout";
 import CandyButton from "@/components/common/CandyButton";
@@ -35,6 +36,7 @@ import type {
   DrawPoint,
   DrawStroke,
   StickerInstance,
+  TextureAsset,
 } from "@/types";
 
 const tools: { type: DrawingToolType; name: string; icon: typeof Pencil; color: string }[] = [
@@ -55,6 +57,14 @@ interface LocalSticker {
   dragging: boolean;
 }
 
+const textureCategories: { key: TextureAsset["category"]; label: string; emoji: string }[] = [
+  { key: "none", label: "无", emoji: "❌" },
+  { key: "paper", label: "纸张", emoji: "📄" },
+  { key: "watercolor", label: "水彩", emoji: "🎨" },
+  { key: "gradient", label: "渐变", emoji: "🌈" },
+  { key: "pattern", label: "图案", emoji: "✨" },
+];
+
 export default function Painting() {
   const workspaceKey: WorkspaceKey = "painting";
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -65,11 +75,13 @@ export default function Painting() {
   const [stickers, setStickers] = useState<LocalSticker[]>([]);
   const [dragStickerId, setDragStickerId] = useState<string | null>(null);
   const [stickerTab, setStickerTab] = useState("动物");
+  const [textureTab, setTextureTab] = useState<TextureAsset["category"]>("none");
 
   const {
     tool,
     layers,
     activeLayerId,
+    showTexturesPanel,
     setToolType,
     setToolColor,
     setToolSize,
@@ -81,10 +93,21 @@ export default function Painting() {
     moveLayerDown,
     addLayer,
     removeLayer,
+    toggleTexturesPanel,
+  } = useDrawingStore();
+
+  const {
+    currentPage,
+    stickerAssets,
+    textureAssets,
+    addSticker,
     undo,
     redo,
-  } = useDrawingStore();
-  const { currentPage, stickerAssets, addSticker } = useProjectStore();
+    canUndo,
+    canRedo,
+    setPageTexture,
+  } = useProjectStore();
+
   const {
     showLayersPanel,
     toggleLayersPanel,
@@ -97,6 +120,16 @@ export default function Painting() {
   } = useUIStore();
 
   const canvasSize = { w: 800, h: 560 };
+
+  const currentTexture = currentPage?.texture;
+  const pageStrokes = currentPage?.strokes ?? [];
+  const pageUndoCount = currentPage ? canUndo(currentPage.id) : false;
+  const pageRedoCount = currentPage ? canRedo(currentPage.id) : false;
+
+  const filteredTextures = useMemo(() => {
+    if (textureTab === "none") return textureAssets.filter((t) => t.category === "none");
+    return textureAssets.filter((t) => t.category === textureTab);
+  }, [textureAssets, textureTab]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -111,9 +144,7 @@ export default function Painting() {
     canvas.style.height = `${canvasSize.h}px`;
     ctx.scale(dpr, dpr);
 
-    const initBg = currentPage?.background.value || "#FFFAF0";
-    ctx.fillStyle = initBg;
-    ctx.fillRect(0, 0, canvasSize.w, canvasSize.h);
+    redrawCanvas(ctx);
 
     if (currentPage?.stickers?.length && stickers.length === 0) {
       setStickers(
@@ -131,7 +162,33 @@ export default function Painting() {
         }),
       );
     }
-  }, [currentPage?.id]);
+  }, [currentPage?.id, currentPage?.strokes.length]);
+
+  const redrawCanvas = (ctx: CanvasRenderingContext2D) => {
+    const bg = currentPage?.background.value || "#FFFAF0";
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, canvasSize.w, canvasSize.h);
+
+    if (currentTexture && currentTexture.value !== "none") {
+      ctx.save();
+      ctx.globalAlpha = 1;
+      const tempCanvas = document.createElement("canvas");
+      tempCanvas.width = canvasSize.w;
+      tempCanvas.height = canvasSize.h;
+      const tempCtx = tempCanvas.getContext("2d");
+      if (tempCtx) {
+        tempCtx.fillStyle = "#FFFAF0";
+        tempCtx.fillRect(0, 0, canvasSize.w, canvasSize.h);
+      }
+      ctx.fillStyle = `rgba(255,255,255,0.01)`;
+      ctx.fillRect(0, 0, canvasSize.w, canvasSize.h);
+      ctx.restore();
+    }
+
+    pageStrokes.forEach((stroke) => {
+      drawStroke(ctx, stroke.points, stroke.tool);
+    });
+  };
 
   const getCanvasPos = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
@@ -143,24 +200,29 @@ export default function Painting() {
     };
   };
 
-  const drawStroke = (ctx: CanvasRenderingContext2D, pts: DrawPoint[]) => {
+  const drawStroke = (
+    ctx: CanvasRenderingContext2D,
+    pts: DrawPoint[],
+    strokeTool: typeof tool,
+  ) => {
     if (pts.length < 2) return;
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.globalAlpha = tool.opacity;
-    ctx.strokeStyle = tool.type === "eraser" ? currentPage?.background.value || "#FFFFFF" : tool.color;
-    ctx.lineWidth = tool.size;
+    ctx.globalAlpha = strokeTool.opacity;
+    ctx.strokeStyle =
+      strokeTool.type === "eraser" ? currentPage?.background.value || "#FFFFFF" : strokeTool.color;
+    ctx.lineWidth = strokeTool.size;
 
-    if (tool.type === "watercolor") {
-      ctx.globalAlpha = tool.opacity * 0.5;
-      ctx.shadowColor = tool.color;
+    if (strokeTool.type === "watercolor") {
+      ctx.globalAlpha = strokeTool.opacity * 0.5;
+      ctx.shadowColor = strokeTool.color;
       ctx.shadowBlur = 8;
-    } else if (tool.type === "crayon") {
-      ctx.globalAlpha = tool.opacity * 0.85;
-    } else if (tool.type === "marker") {
-      ctx.globalAlpha = tool.opacity * 0.75;
-      ctx.lineWidth = tool.size * 1.2;
+    } else if (strokeTool.type === "crayon") {
+      ctx.globalAlpha = strokeTool.opacity * 0.85;
+    } else if (strokeTool.type === "marker") {
+      ctx.globalAlpha = strokeTool.opacity * 0.75;
+      ctx.lineWidth = strokeTool.size * 1.2;
     }
 
     ctx.beginPath();
@@ -190,9 +252,8 @@ export default function Painting() {
     if (!ctx) return;
     const pts = [...pointsRef.current, { x, y }];
     const last = pointsRef.current;
-    drawStroke(ctx, [...last.slice(-2), { x, y }]);
+    drawStroke(ctx, [...last.slice(-2), { x, y }], tool);
     pointsRef.current = pts;
-    void pts;
   };
 
   const endDraw = () => {
@@ -211,6 +272,24 @@ export default function Painting() {
     pointsRef.current = [];
   };
 
+  const handleUndo = () => {
+    if (!currentPage) return;
+    if (undo(currentPage.id)) {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (ctx) redrawCanvas(ctx);
+    }
+  };
+
+  const handleRedo = () => {
+    if (!currentPage) return;
+    if (redo(currentPage.id)) {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (ctx) redrawCanvas(ctx);
+    }
+  };
+
   const handleStickerMouseDown = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setDragStickerId(id);
@@ -221,9 +300,7 @@ export default function Painting() {
     if (dragStickerId) {
       const pos = getCanvasPos(e.clientX, e.clientY);
       setStickers((prev) =>
-        prev.map((s) =>
-          s.id === dragStickerId ? { ...s, x: pos.x, y: pos.y } : s,
-        ),
+        prev.map((s) => (s.id === dragStickerId ? { ...s, x: pos.x, y: pos.y } : s)),
       );
     } else if (!isDrawing) {
       const pos = getCanvasPos(e.clientX, e.clientY);
@@ -280,7 +357,26 @@ export default function Painting() {
     }
   };
 
+  const handleSelectTexture = (texture: TextureAsset) => {
+    if (!currentPage) return;
+    setPageTexture(currentPage.id, texture.category === "none" ? null : texture);
+    toggleTexturesPanel();
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (ctx) {
+      setTimeout(() => redrawCanvas(ctx), 50);
+    }
+  };
+
   const categories = [...new Set(stickerAssets.map((s) => s.category))];
+
+  const backgroundStyle = useMemo<React.CSSProperties>(() => {
+    const base: React.CSSProperties = {};
+    if (currentTexture && currentTexture.value !== "none") {
+      base.background = currentTexture.value;
+    }
+    return base;
+  }, [currentTexture]);
 
   return (
     <WorkspaceLayout currentKey={workspaceKey}>
@@ -297,9 +393,7 @@ export default function Painting() {
                   title={t.name}
                   className={cn(
                     "group relative flex flex-col items-center p-2.5 rounded-candy-sm transition-all w-14",
-                    active
-                      ? "bg-white shadow-candy-sm scale-105"
-                      : "hover:bg-white/60",
+                    active ? "bg-white shadow-candy-sm scale-105" : "hover:bg-white/60",
                   )}
                 >
                   <Icon
@@ -328,16 +422,28 @@ export default function Painting() {
             <div className="w-px h-10 bg-cream-300 mx-1" />
 
             <button
-              onClick={undo}
-              title="撤销"
-              className="p-2.5 rounded-candy-sm hover:bg-white/80 text-cocoa-500 transition-colors"
+              onClick={handleUndo}
+              title={pageUndoCount ? "撤销" : "没有可撤销的操作"}
+              disabled={!pageUndoCount}
+              className={cn(
+                "p-2.5 rounded-candy-sm transition-colors",
+                pageUndoCount
+                  ? "hover:bg-white/80 text-cocoa-500"
+                  : "text-cream-300 cursor-not-allowed",
+              )}
             >
               <Undo2 size={20} />
             </button>
             <button
-              onClick={redo}
-              title="重做"
-              className="p-2.5 rounded-candy-sm hover:bg-white/80 text-cocoa-500 transition-colors"
+              onClick={handleRedo}
+              title={pageRedoCount ? "重做" : "没有可重做的操作"}
+              disabled={!pageRedoCount}
+              className={cn(
+                "p-2.5 rounded-candy-sm transition-colors",
+                pageRedoCount
+                  ? "hover:bg-white/80 text-cocoa-500"
+                  : "text-cream-300 cursor-not-allowed",
+              )}
             >
               <Redo2 size={20} />
             </button>
@@ -345,12 +451,22 @@ export default function Painting() {
 
           <div className="flex items-center gap-3">
             <button
+              onClick={toggleTexturesPanel}
+              className={cn(
+                "btn-candy-sm inline-flex items-center gap-1.5",
+                showTexturesPanel
+                  ? "bg-lilac-500 text-white"
+                  : "bg-white text-cocoa-600",
+              )}
+            >
+              <FileText size={16} />
+              纹理
+            </button>
+            <button
               onClick={toggleStickersPanel}
               className={cn(
                 "btn-candy-sm inline-flex items-center gap-1.5",
-                showStickersPanel
-                  ? "bg-lemon-500 text-white"
-                  : "bg-white text-cocoa-600",
+                showStickersPanel ? "bg-lemon-500 text-white" : "bg-white text-cocoa-600",
               )}
             >
               <Sticker size={16} />
@@ -360,9 +476,7 @@ export default function Painting() {
               onClick={toggleLayersPanel}
               className={cn(
                 "btn-candy-sm inline-flex items-center gap-1.5",
-                showLayersPanel
-                  ? "bg-sky-500 text-white"
-                  : "bg-white text-cocoa-600",
+                showLayersPanel ? "bg-sky-500 text-white" : "bg-white text-cocoa-600",
               )}
             >
               <Layers size={16} />
@@ -372,9 +486,7 @@ export default function Painting() {
               onClick={() => setGridVisible(!gridVisible)}
               className={cn(
                 "btn-candy-sm inline-flex items-center gap-1.5",
-                gridVisible
-                  ? "bg-lilac-500 text-white"
-                  : "bg-white text-cocoa-600",
+                gridVisible ? "bg-lilac-500 text-white" : "bg-white text-cocoa-600",
               )}
             >
               <Grid3X3 size={16} />
@@ -410,11 +522,7 @@ export default function Painting() {
                 <span className="text-xl">🎨</span> 画笔属性
               </h4>
               <div className="space-y-5">
-                <ColorPicker
-                  label="画笔颜色"
-                  value={tool.color}
-                  onChange={setToolColor}
-                />
+                <ColorPicker label="画笔颜色" value={tool.color} onChange={setToolColor} />
                 <Slider
                   label="笔刷大小"
                   value={tool.size}
@@ -440,6 +548,7 @@ export default function Painting() {
                   <div className="text-sm font-medium text-cocoa-500 mb-2">笔刷预览</div>
                   <div
                     className="h-20 rounded-candy bg-cream-100 border-2 border-cream-200 p-4 flex items-center justify-center relative overflow-hidden"
+                    style={currentTexture && currentTexture.value !== "none" ? { background: currentTexture.value } : {}}
                   >
                     <canvas
                       width={200}
@@ -476,8 +585,21 @@ export default function Painting() {
               style={{
                 transform: `scale(${zoom})`,
                 transformOrigin: "center center",
+                ...backgroundStyle,
               }}
             >
+              <div
+                className={cn(
+                  "absolute inset-0 pointer-events-none z-0 transition-opacity",
+                  currentTexture && currentTexture.value !== "none" ? "opacity-100" : "opacity-0",
+                )}
+                style={{
+                  background: currentTexture?.value,
+                  width: canvasSize.w,
+                  height: canvasSize.h,
+                }}
+              />
+
               <div
                 className={cn(
                   "absolute inset-0 pointer-events-none z-20 transition-opacity",
@@ -521,7 +643,7 @@ export default function Painting() {
                 </div>
               ))}
               <div className="absolute top-3 right-3 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-cocoa-500 shadow-candy-sm z-30">
-                {canvasSize.w} × {canvasSize.h}
+                {currentTexture ? `🎨 ${currentTexture.name}` : ""}
               </div>
             </div>
           </div>
@@ -646,29 +768,85 @@ export default function Painting() {
           tabs={categories.map((c) => ({ key: c, label: c }))}
           value={stickerTab}
           onChange={setStickerTab}
-          size="sm"
         />
-        <div className="grid grid-cols-5 gap-2 mt-4">
+        <div className="mt-4 grid grid-cols-5 gap-2 max-h-[60vh] overflow-auto scrollbar-candy">
           {stickerAssets
             .filter((s) => s.category === stickerTab)
             .map((s, idx) => (
               <button
                 key={s.id}
                 onClick={() => addStickerToCanvas(s.emoji, s.id)}
-                className="aspect-square rounded-candy-sm bg-white border-2 border-cream-200 hover:border-lemon-400 hover:bg-lemon-50 hover:shadow-candy-sm transition-all flex items-center justify-center text-3xl group animate-pop"
+                className="w-12 h-12 rounded-lg text-2xl bg-cream-50 hover:bg-white hover:shadow-candy-sm transition-all animate-pop"
                 style={{ animationDelay: `${idx * 20}ms` }}
                 title={s.name}
               >
-                <span className="group-hover:scale-125 transition-transform">{s.emoji}</span>
+                {s.emoji}
               </button>
             ))}
         </div>
-        <div className="mt-6 pt-4 border-t border-cream-200">
-          <div className="text-sm font-medium text-cocoa-500 mb-2">💡 小技巧</div>
-          <p className="text-xs text-cocoa-400 leading-relaxed">
-            点击贴纸即可添加到画布中央。拖拽可以移动位置，下次创作时会智能保存上次的位置哦！
-          </p>
+        <p className="text-xs text-cocoa-400 mt-4 text-center">
+          点击贴纸即可添加到画布中央。拖拽可以移动位置，下次创作时会智能保存上次的位置哦！
+        </p>
+      </Panel>
+
+      <Panel open={showTexturesPanel} onClose={toggleTexturesPanel} title="🎨 画布纹理" side="right" width="w-80">
+        <Tabs
+          tabs={textureCategories.map((t) => ({
+            key: t.key,
+            label: `${t.emoji} ${t.label}`,
+          }))}
+          value={textureTab}
+          onChange={(k) => setTextureTab(k as TextureAsset["category"])}
+        />
+        <div className="mt-4 space-y-3 max-h-[65vh] overflow-auto scrollbar-candy">
+          {filteredTextures.map((t) => {
+            const active = currentTexture?.id === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => handleSelectTexture(t)}
+                className={cn(
+                  "w-full p-4 rounded-candy border-2 transition-all text-left",
+                  active
+                    ? "border-lilac-400 bg-lilac-50 shadow-candy-sm"
+                    : "border-cream-200 bg-white hover:border-lilac-200",
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-16 h-16 rounded-lg border-2 border-white shadow-sm shrink-0"
+                    style={{
+                      background: t.value === "none" ? "linear-gradient(135deg, #fff 25%, #eee 25%, #eee 50%, #fff 50%, #fff 75%, #eee 75%)" : t.value,
+                      backgroundSize: t.value === "none" ? "20px 20px" : "auto",
+                    }}
+                  />
+                  <div className="flex-1">
+                    <div className="font-display text-cocoa-600">{t.name}</div>
+                    <div className="text-xs text-cocoa-400">
+                      {t.category === "none"
+                        ? "不使用任何纹理"
+                        : t.category === "paper"
+                        ? "纸张类纹理"
+                        : t.category === "watercolor"
+                        ? "水彩效果"
+                        : t.category === "gradient"
+                        ? "渐变背景"
+                        : "装饰图案"}
+                    </div>
+                  </div>
+                  {active && (
+                    <div className="w-6 h-6 rounded-full bg-lilac-500 text-white flex items-center justify-center">
+                      ✓
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
+        <p className="text-xs text-cocoa-400 mt-4 text-center">
+          选择纹理后当前页面会立即应用。不同页面可以设置不同的纹理。
+        </p>
       </Panel>
     </WorkspaceLayout>
   );

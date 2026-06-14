@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Plus,
   Pencil,
@@ -16,17 +16,28 @@ import CandyButton from "@/components/common/CandyButton";
 import Tabs from "@/components/common/Tabs";
 import ColorPicker from "@/components/common/ColorPicker";
 import { useProjectStore } from "@/store";
-import { MOCK_CHARACTERS } from "@/utils/mockData";
-import { cn, uid } from "@/utils/id";
-import type { WorkspaceKey, Character } from "@/types";
+import { cn, generatePastel } from "@/utils/id";
+import type { WorkspaceKey, Expression, Costume, Pose } from "@/types";
 
 type ViewTab = "expressions" | "costumes" | "poses";
 
 export default function Characters() {
   const workspaceKey: WorkspaceKey = "characters";
-  const storeChars = useProjectStore((s) => s.characters);
-  const allChars: Character[] = storeChars.length > 0 ? storeChars : MOCK_CHARACTERS;
-  const [selectedId, setSelectedId] = useState(allChars[0]?.id ?? "");
+  const characters = useProjectStore((s) => s.characters);
+  const addCharacter = useProjectStore((s) => s.addCharacter);
+  const updateCharacter = useProjectStore((s) => s.updateCharacter);
+  const removeCharacter = useProjectStore((s) => s.removeCharacter);
+  const addExpression = useProjectStore((s) => s.addExpression);
+  const updateExpression = useProjectStore((s) => s.updateExpression);
+  const removeExpression = useProjectStore((s) => s.removeExpression);
+  const addCostume = useProjectStore((s) => s.addCostume);
+  const updateCostume = useProjectStore((s) => s.updateCostume);
+  const removeCostume = useProjectStore((s) => s.removeCostume);
+  const addPose = useProjectStore((s) => s.addPose);
+  const updatePose = useProjectStore((s) => s.updatePose);
+  const removePose = useProjectStore((s) => s.removePose);
+
+  const [selectedId, setSelectedId] = useState<string>(characters[0]?.id ?? "");
   const [viewTab, setViewTab] = useState<ViewTab>("expressions");
   const [showNewChar, setShowNewChar] = useState(false);
   const [newName, setNewName] = useState("");
@@ -34,10 +45,15 @@ export default function Characters() {
   const [newAvatar, setNewAvatar] = useState("🐰");
   const [editing, setEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editEmoji, setEditEmoji] = useState("😀");
 
-  void useProjectStore;
+  useEffect(() => {
+    if (characters.length > 0 && !characters.find((c) => c.id === selectedId)) {
+      setSelectedId(characters[0].id);
+    }
+  }, [characters, selectedId]);
 
-  const selected = allChars.find((c) => c.id === selectedId);
+  const selected = characters.find((c) => c.id === selectedId);
   const avatarOptions = ["🐰", "🦊", "🐻", "🐱", "🐶", "🐼", "🐨", "🐯", "🦁", "🐸", "🦄", "🐲"];
 
   const viewTabConfig = {
@@ -46,25 +62,103 @@ export default function Characters() {
       title: "表情库",
       color: "from-coral-400 to-lemon-400",
       empty: "还没有表情，点击下方按钮添加吧！",
+      defaultEmoji: "😀",
     },
     costumes: {
       icon: <Shirt size={18} />,
       title: "服装间",
       color: "from-sky-400 to-lilac-400",
       empty: "为角色搭配不同风格的服装",
+      defaultEmoji: "👕",
     },
     poses: {
       icon: <PersonStanding size={18} />,
       title: "姿势库",
       color: "from-mint-400 to-sky-400",
       empty: "添加角色的各种动作姿势",
+      defaultEmoji: "🧍",
     },
   };
 
   const createCharacter = () => {
     if (!newName.trim()) return;
+    const newChar = addCharacter({
+      name: newName.trim(),
+      color: newColor,
+      avatar: newAvatar,
+      description: "",
+    });
+    setSelectedId(newChar.id);
     setShowNewChar(false);
     setNewName("");
+    setNewColor(generatePastel());
+    setNewAvatar(avatarOptions[Math.floor(Math.random() * avatarOptions.length)]);
+  };
+
+  const handleDeleteCharacter = () => {
+    if (!selected) return;
+    if (confirm(`确定要删除角色「${selected.name}」吗？`)) {
+      removeCharacter(selected.id);
+    }
+  };
+
+  const handleAddItem = () => {
+    if (!selected || !editValue.trim()) return;
+    if (viewTab === "expressions") {
+      addExpression(selected.id, {
+        name: editValue.trim(),
+        emoji: editEmoji,
+      });
+    } else if (viewTab === "costumes") {
+      addCostume(selected.id, {
+        name: editValue.trim(),
+        color: generatePastel(),
+        icon: editEmoji,
+      });
+    } else {
+      addPose(selected.id, {
+        name: editValue.trim(),
+        icon: editEmoji,
+      });
+    }
+    setEditing(null);
+    setEditValue("");
+    setEditEmoji(viewTabConfig[viewTab].defaultEmoji);
+  };
+
+  const handleUpdateItem = (itemId: string) => {
+    if (!selected || !editValue.trim()) return;
+    if (viewTab === "expressions") {
+      updateExpression(selected.id, itemId, { name: editValue.trim(), emoji: editEmoji });
+    } else if (viewTab === "costumes") {
+      updateCostume(selected.id, itemId, { name: editValue.trim(), icon: editEmoji });
+    } else {
+      updatePose(selected.id, itemId, { name: editValue.trim(), icon: editEmoji });
+    }
+    setEditing(null);
+    setEditValue("");
+  };
+
+  const handleDeleteItem = (itemId: string) => {
+    if (!selected) return;
+    if (!confirm("确定要删除吗？")) return;
+    if (viewTab === "expressions") {
+      removeExpression(selected.id, itemId);
+    } else if (viewTab === "costumes") {
+      removeCostume(selected.id, itemId);
+    } else {
+      removePose(selected.id, itemId);
+    }
+  };
+
+  const handleStartEdit = (item: Expression | Costume | Pose) => {
+    setEditing(item.id);
+    setEditValue(item.name);
+    if ("emoji" in item) {
+      setEditEmoji(item.emoji);
+    } else if ("icon" in item) {
+      setEditEmoji(item.icon);
+    }
   };
 
   const viewCfg = viewTabConfig[viewTab];
@@ -74,6 +168,8 @@ export default function Characters() {
       : viewTab === "costumes"
       ? selected?.costumes ?? []
       : selected?.poses ?? [];
+
+  const isAddingNew = editing && !list.find((i) => i.id === editing);
 
   return (
     <WorkspaceLayout currentKey={workspaceKey}>
@@ -94,7 +190,7 @@ export default function Characters() {
           </div>
 
           <div className="space-y-3">
-            {allChars.map((char, idx) => {
+            {characters.map((char, idx) => {
               const active = char.id === selectedId;
               return (
                 <button
@@ -117,13 +213,16 @@ export default function Characters() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-display text-lg text-cocoa-600 truncate">{char.name}</div>
-                      <div className="text-xs text-cocoa-400 truncate">{char.description}</div>
+                      <div className="text-xs text-cocoa-400 truncate">{char.description || "一个有趣的角色"}</div>
                       <div className="flex gap-1 mt-1">
                         <span className="chip !py-0 !text-[10px] !px-1.5">
                           {char.expressions.length} 表情
                         </span>
                         <span className="chip !py-0 !text-[10px] !px-1.5">
                           {char.costumes.length} 服装
+                        </span>
+                        <span className="chip !py-0 !text-[10px] !px-1.5">
+                          {char.poses.length} 姿势
                         </span>
                       </div>
                     </div>
@@ -155,9 +254,9 @@ export default function Characters() {
                   {selected.avatar}
                   <Sparkles className="absolute -top-2 -right-2 w-10 h-10 text-lemon-500 animate-sparkle" />
                 </div>
-                <div>
+                <div className="flex-1">
                   <h2 className="font-display text-4xl text-cocoa-600 mb-1">{selected.name}</h2>
-                  <p className="text-cocoa-500 mb-3">{selected.description}</p>
+                  <p className="text-cocoa-500 mb-3">{selected.description || "点击编辑添加角色描述"}</p>
                   <div className="flex gap-2 flex-wrap">
                     <span className="chip bg-coral-100 !border-coral-200 !text-coral-600">
                       <Smile size={12} /> {selected.expressions.length} 种表情
@@ -170,6 +269,29 @@ export default function Characters() {
                     </span>
                   </div>
                 </div>
+                <div className="flex gap-2">
+                  <CandyButton
+                    size="sm"
+                    variant="secondary"
+                    leftIcon={<Pencil size={14} />}
+                    onClick={() => {
+                      const newDesc = prompt("修改角色描述", selected.description) ?? "";
+                      if (newDesc !== null) {
+                        updateCharacter(selected.id, { description: newDesc });
+                      }
+                    }}
+                  >
+                    编辑资料
+                  </CandyButton>
+                  <CandyButton
+                    size="sm"
+                    variant="danger"
+                    leftIcon={<Trash2 size={14} />}
+                    onClick={handleDeleteCharacter}
+                  >
+                    删除角色
+                  </CandyButton>
+                </div>
               </div>
 
               <div className="px-8">
@@ -180,7 +302,10 @@ export default function Characters() {
                     icon: viewTabConfig[t].icon,
                   }))}
                   value={viewTab}
-                  onChange={(k) => setViewTab(k as ViewTab)}
+                  onChange={(k) => {
+                    setViewTab(k as ViewTab);
+                    setEditing(null);
+                  }}
                 />
               </div>
 
@@ -194,16 +319,16 @@ export default function Characters() {
                     leftIcon={<Plus size={14} />}
                     className={`bg-gradient-to-r ${viewCfg.color} text-white`}
                     onClick={() => {
-                      const key = `new_${Date.now()}`;
-                      setEditing(key);
+                      setEditing(`new_${Date.now()}`);
                       setEditValue("");
+                      setEditEmoji(viewCfg.defaultEmoji);
                     }}
                   >
                     新增{viewCfg.title.slice(0, 2)}
                   </CandyButton>
                 </div>
 
-                {list.length === 0 && !editing ? (
+                {list.length === 0 && !isAddingNew ? (
                   <div className="rounded-candy-lg border-2 border-dashed border-cream-300 bg-cream-100/30 p-12 text-center">
                     <div className="text-6xl mb-4 animate-bounce-soft">🎨</div>
                     <p className="text-cocoa-400 mb-4">{viewCfg.empty}</p>
@@ -228,13 +353,8 @@ export default function Characters() {
                                 {isEditing ? (
                                   <input
                                     autoFocus
-                                    value={editValue}
-                                    onChange={(e) => setEditValue(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter" && editing && editValue) {
-                                        setEditing(null);
-                                      }
-                                    }}
+                                    value={editEmoji}
+                                    onChange={(e) => setEditEmoji(e.target.value.slice(0, 2))}
                                     className="text-5xl w-24 text-center bg-cream-100 rounded-lg outline-none border-2 border-coral-300"
                                     placeholder="😀"
                                   />
@@ -255,29 +375,34 @@ export default function Characters() {
                               </div>
                             )}
                             {isEditing ? (
-                              <div className="w-full flex items-center gap-1">
+                              <div className="w-full space-y-2">
                                 <input
                                   autoFocus
                                   value={editValue}
                                   onChange={(e) => setEditValue(e.target.value)}
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter" && editValue) setEditing(null);
+                                    if (e.key === "Enter" && editValue) handleUpdateItem(item.id);
                                   }}
-                                  className="flex-1 px-3 py-1.5 rounded-lg text-sm border-2 border-coral-300 outline-none bg-white text-cocoa-600"
+                                  className="w-full px-3 py-1.5 rounded-lg text-sm border-2 border-coral-300 outline-none bg-white text-cocoa-600"
                                   placeholder="输入名称..."
                                 />
-                                <button
-                                  onClick={() => setEditing(null)}
-                                  className="p-1.5 rounded-lg bg-mint-500 text-white"
-                                >
-                                  <Check size={14} />
-                                </button>
-                                <button
-                                  onClick={() => setEditing(null)}
-                                  className="p-1.5 rounded-lg bg-cream-200 text-cocoa-500"
-                                >
-                                  <X size={14} />
-                                </button>
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={() => handleUpdateItem(item.id)}
+                                    className="flex-1 p-1.5 rounded-lg bg-mint-500 text-white text-xs font-display"
+                                  >
+                                    <Check size={14} className="inline mr-1" /> 保存
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setEditing(null);
+                                      setEditValue("");
+                                    }}
+                                    className="p-1.5 rounded-lg bg-cream-200 text-cocoa-500"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
                               </div>
                             ) : (
                               <div className="font-display text-lg text-cocoa-600 mb-2">{item.name}</div>
@@ -285,15 +410,13 @@ export default function Characters() {
                             {!isEditing && (
                               <div className="flex gap-1">
                                 <button
-                                  onClick={() => {
-                                    setEditing(item.id);
-                                    setEditValue(item.name);
-                                  }}
+                                  onClick={() => handleStartEdit(item)}
                                   className="p-1.5 rounded-lg bg-cream-200 text-cocoa-500 hover:bg-sky-100 hover:text-sky-500 transition-colors"
                                 >
                                   <Pencil size={13} />
                                 </button>
                                 <button
+                                  onClick={() => handleDeleteItem(item.id)}
                                   className="p-1.5 rounded-lg bg-cream-200 text-cocoa-500 hover:bg-red-100 hover:text-red-500 transition-colors"
                                 >
                                   <Trash2 size={13} />
@@ -305,29 +428,47 @@ export default function Characters() {
                       );
                     })}
 
-                    {editing && !list.find((i) => i.id === editing) && (
+                    {isAddingNew && (
                       <CandyCard className="p-5 ring-2 ring-offset-2 ring-coral-400" gradient={viewCfg.color}>
                         <div className="flex flex-col items-center text-center gap-3">
-                          <div className="text-5xl">✨</div>
+                          {viewTab === "expressions" ? (
+                            <input
+                              value={editEmoji}
+                              onChange={(e) => setEditEmoji(e.target.value.slice(0, 2))}
+                              className="text-5xl w-20 h-20 text-center bg-cream-100 rounded-lg outline-none border-2 border-coral-300"
+                              placeholder="😀"
+                            />
+                          ) : (
+                            <div className="text-5xl">{editEmoji}</div>
+                          )}
                           <input
                             autoFocus
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === "Enter" && editValue) setEditing(null);
+                              if (e.key === "Enter" && editValue) handleAddItem();
                             }}
                             className="w-full px-3 py-2 rounded-lg text-base border-2 border-coral-300 outline-none bg-white text-center font-display text-cocoa-600"
                             placeholder={`输入${viewCfg.title.slice(0, 2)}名称...`}
                           />
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 w-full">
                             <CandyButton
                               size="sm"
                               variant="secondary"
-                              onClick={() => setEditing(null)}
+                              onClick={handleAddItem}
+                              className="flex-1"
                             >
                               <Check size={14} /> 保存
                             </CandyButton>
-                            <CandyButton size="sm" variant="soft" onClick={() => setEditing(null)}>
+                            <CandyButton
+                              size="sm"
+                              variant="soft"
+                              onClick={() => {
+                                setEditing(null);
+                                setEditValue("");
+                              }}
+                              className="flex-1"
+                            >
                               <X size={14} /> 取消
                             </CandyButton>
                           </div>
@@ -393,6 +534,9 @@ export default function Characters() {
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && newName.trim()) createCharacter();
+                  }}
                   placeholder="例如：小熊布丁"
                   className="w-full px-4 py-3 rounded-candy-sm border-2 border-cream-300 focus:border-coral-400 outline-none bg-cream-50 font-display text-lg text-cocoa-600"
                 />
@@ -419,5 +563,3 @@ export default function Characters() {
     </WorkspaceLayout>
   );
 }
-
-void uid;

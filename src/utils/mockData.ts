@@ -227,14 +227,17 @@ export const STICKER_ASSETS: StickerAsset[] = [
 ];
 
 export const TEXTURE_ASSETS: TextureAsset[] = [
-  { id: "t1", name: "羊皮纸", category: "纸张", cssClass: "canvas-bg" },
-  { id: "t2", name: "素描纸", category: "纸张", cssClass: "canvas-bg" },
-  { id: "t3", name: "水彩纸", category: "纸张", cssClass: "canvas-bg" },
-  { id: "t4", name: "牛皮纸", category: "纸张", cssClass: "canvas-bg" },
-  { id: "t5", name: "彩虹渐变", category: "渐变", cssClass: "bg-rainbow-soft" },
-  { id: "t6", name: "天空蓝", category: "纯色", cssClass: "bg-sky-400/20" },
-  { id: "t7", name: "柠檬黄", category: "纯色", cssClass: "bg-lemon-400/30" },
-  { id: "t8", name: "薄荷绿", category: "纯色", cssClass: "bg-mint-400/20" },
+  { id: "t0", name: "无纹理", category: "none", value: "none", preview: "transparent" },
+  { id: "t1", name: "羊皮纸", category: "paper", value: "radial-gradient(circle at 20% 30%, rgba(255,240,200,0.4) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(255,220,180,0.3) 0%, transparent 50%)", preview: "#FFF8E7" },
+  { id: "t2", name: "素描纸", category: "paper", value: "repeating-linear-gradient(0deg, rgba(200,200,200,0.05) 0px, rgba(200,200,200,0.05) 1px, transparent 1px, transparent 3px)", preview: "#FAFAFA" },
+  { id: "t3", name: "水彩纸", category: "watercolor", value: "radial-gradient(circle at 30% 40%, rgba(135,206,235,0.15) 0%, transparent 60%), radial-gradient(circle at 70% 60%, rgba(255,182,193,0.15) 0%, transparent 60%), repeating-linear-gradient(45deg, rgba(150,150,150,0.03) 0px, rgba(150,150,150,0.03) 2px, transparent 2px, transparent 6px)", preview: "#F5F0E8" },
+  { id: "t4", name: "牛皮纸", category: "paper", value: "repeating-linear-gradient(90deg, rgba(180,140,80,0.08) 0px, rgba(180,140,80,0.08) 1px, transparent 1px, transparent 4px), radial-gradient(circle at 50% 50%, rgba(200,160,100,0.1) 0%, transparent 70%)", preview: "#F5E6D0" },
+  { id: "t5", name: "彩虹渐变", category: "gradient", value: "linear-gradient(135deg, rgba(255,154,162,0.3) 0%, rgba(255,218,193,0.3) 20%, rgba(255,255,205,0.3) 40%, rgba(191,228,217,0.3) 60%, rgba(155,205,237,0.3) 80%, rgba(186,177,225,0.3) 100%)", preview: "linear-gradient(135deg, #FF9AA2, #FFDAC1, #FFFFCD, #BFE4D9, #9BCDED, #BAB1E1)" },
+  { id: "t6", name: "粉红星云", category: "gradient", value: "radial-gradient(circle at 30% 30%, rgba(255,182,193,0.4) 0%, transparent 50%), radial-gradient(circle at 70% 70%, rgba(221,160,221,0.3) 0%, transparent 50%)", preview: "linear-gradient(135deg, #FFB6C1, #DDA0DD)" },
+  { id: "t7", name: "蓝天白云", category: "watercolor", value: "radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.8) 0%, transparent 40%), radial-gradient(ellipse at 70% 40%, rgba(255,255,255,0.6) 0%, transparent 35%), linear-gradient(to bottom, rgba(135,206,235,0.3) 0%, rgba(135,206,250,0.1) 100%)", preview: "linear-gradient(to bottom, #87CEEB, #FFFFFF)" },
+  { id: "t8", name: "波点图案", category: "pattern", value: "radial-gradient(circle, rgba(255,182,193,0.3) 1.5px, transparent 1.5px)", preview: "#FFF0F5" },
+  { id: "t9", name: "条纹图案", category: "pattern", value: "repeating-linear-gradient(45deg, rgba(135,206,235,0.15) 0px, rgba(135,206,235,0.15) 10px, transparent 10px, transparent 20px)", preview: "#F0F8FF" },
+  { id: "t10", name: "星点闪烁", category: "pattern", value: "radial-gradient(circle at 20% 30%, rgba(255,215,0,0.4) 1px, transparent 1px), radial-gradient(circle at 60% 50%, rgba(255,215,0,0.3) 1.5px, transparent 1.5px), radial-gradient(circle at 80% 70%, rgba(255,215,0,0.4) 1px, transparent 1px)", preview: "#FFFAF0" },
 ];
 
 export const FONT_ASSETS: FontAsset[] = [
@@ -339,12 +342,14 @@ export const MOCK_CHARACTERS: Character[] = [
 ];
 
 export function createMockPages(projectId: string): Page[] {
+  const T = TEXTURE_ASSETS;
   return [
     {
       id: uid(),
       projectId,
       pageNumber: 1,
       background: { type: "color", value: "#FFFACD", name: "淡黄色" },
+      texture: T[5],
       sceneDescription: "封面 - 小兔子站在森林入口",
       strokes: [],
       textBubbles: [
@@ -374,6 +379,7 @@ export function createMockPages(projectId: string): Page[] {
       projectId,
       pageNumber: 2,
       background: { type: "color", value: "#E4F5E4", name: "薄荷绿" },
+      texture: T[3],
       sceneDescription: "第1页 - 小兔子决定去冒险",
       strokes: [],
       textBubbles: [
@@ -404,6 +410,7 @@ export function createMockPages(projectId: string): Page[] {
       projectId,
       pageNumber: 3,
       background: { type: "color", value: "#FFF1E0", name: "桃色" },
+      texture: T[1],
       sceneDescription: "第2页 - 遇到小狐狸",
       strokes: [],
       textBubbles: [
@@ -447,6 +454,7 @@ export function createMockPages(projectId: string): Page[] {
       projectId,
       pageNumber: 4,
       background: { type: "color", value: "#E6E6FA", name: "淡紫色" },
+      texture: T[7],
       sceneDescription: "第3页 - 遇见熊大叔",
       strokes: [],
       textBubbles: [
@@ -477,6 +485,7 @@ export function createMockPages(projectId: string): Page[] {
       projectId,
       pageNumber: 5,
       background: { type: "color", value: "#FFEFD1", name: "米黄色" },
+      texture: T[9],
       sceneDescription: "第4页 - 发现神秘宝藏",
       strokes: [],
       textBubbles: [
@@ -509,6 +518,7 @@ export function createMockPages(projectId: string): Page[] {
       projectId,
       pageNumber: 6,
       background: { type: "color", value: "#E0FFFF", name: "青蓝色" },
+      texture: T[6],
       sceneDescription: "封底 - 大家开心地回家",
       strokes: [],
       textBubbles: [

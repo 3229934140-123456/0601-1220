@@ -111,13 +111,6 @@ export interface StickerAsset {
   tags: string[];
 }
 
-export interface TextureAsset {
-  id: ID;
-  name: string;
-  category: string;
-  cssClass: string;
-}
-
 export interface FontAsset {
   id: ID;
   name: string;
@@ -194,11 +187,21 @@ export interface DrawStroke {
   layerId: ID;
 }
 
+export interface TextureAsset {
+  id: ID;
+  name: string;
+  category: "paper" | "watercolor" | "gradient" | "pattern" | "none";
+  value: string;
+  preview: string;
+  cssClass?: string;
+}
+
 export interface Page {
   id: ID;
   projectId: ID;
   pageNumber: number;
   background: BackgroundData;
+  texture?: TextureAsset | null;
   sceneDescription: string;
   strokes: DrawStroke[];
   textBubbles: TextBubble[];
